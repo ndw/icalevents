@@ -2,32 +2,10 @@
 
 Simple Python 3 library to download, parse and query iCal sources.
 
-## Build info
+## Details
 
-[![Build Status](https://travis-ci.org/irgangla/icalevents.svg?branch=master)](https://travis-ci.org/irgangla/icalevents)
+See https://github.com/irgangla/icalevents
 
-https://travis-ci.org/irgangla/icalevents
-
-[![codecov](https://codecov.io/gh/irgangla/icalevents/branch/master/graph/badge.svg)](https://codecov.io/gh/irgangla/icalevents)
-
-https://codecov.io/gh/irgangla/icalevents
-
-## Usage
-
-### iCloud:
-
-```python
-
-from icalevents.icalevents import events
-
-es  = events(<iCloud URL>, fix_apple=True)
-```
-
-### Google:
-
-```python
-
-from icalevents.icalevents import events
-
-es  = events(<Google Calendar URL>)
-```
+This fork includes fixes to make sure that each occurrence of a
+repeating event has the correct start and end time, even when the
+repeating event crosses over a daylight saving time boundary.
