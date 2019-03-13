@@ -10,7 +10,7 @@ from dateutil.tz import UTC, gettz
 
 from icalendar import Calendar
 from icalendar.prop import vDDDLists
-
+from pytz import timezone
 
 def now():
     """
@@ -190,7 +190,9 @@ def normalize(dt, tz=UTC):
         raise ValueError("unknown type %s" % type(dt))
 
     if dt.tzinfo:
-        dt = dt.astimezone(tz)
+        # Per https://github.com/irgangla/icalevents/issues/12#issuecomment-456121570
+        pass
+        #dt = dt.astimezone(tz)
     else:
         dt = dt.replace(tzinfo=tz)
 
@@ -217,12 +219,17 @@ def parse_events(content, start=None, end=None, default_span=timedelta(days=7)):
         raise ValueError('Content is invalid!')
 
     calendar = Calendar.from_ical(content)
-    
-    # Find the calendar's timezone info, or use UTC
-    for c in calendar.walk():
-        if c.name == 'VTIMEZONE':
-            cal_tz = gettz(str(c['TZID']))
-            break;
+
+    # Keep track of the timezones defined in the calendar
+    timezones = {}
+    for c in calendar.walk('VTIMEZONE'):
+        name = str(c['TZID'])
+        timezones[name] = c.to_tz()
+
+    # If there's exactly one timezone in the file,
+    # assume it applies globally, otherwise UTC
+    if len(timezones) == 1:
+        cal_tz = gettz(list(timezones)[0])
     else:
         cal_tz = UTC
 
@@ -231,16 +238,82 @@ def parse_events(content, start=None, end=None, default_span=timedelta(days=7)):
 
     found = []
 
+    # Skip dates that are stored as exceptions.
+    exceptions = {}
     for component in calendar.walk():
         if component.name == "VEVENT":
             e = create_event(component)
+
+            if ('EXDATE' in component):
+                # Deal with the fact that sometimes it's a list and
+                # sometimes it's a singleton
+                exlist = []
+                if isinstance(component['EXDATE'], list):
+                    exlist = component['EXDATE']
+                else:
+                    exlist.append(component['EXDATE'])
+                for ex in exlist:
+                    exdate = ex.to_ical().decode("UTF-8")
+                    exceptions[exdate[0:8]] = exdate
+
+            # Attempt to work out what timezone is used for the start
+            # and end times. If the timezone is defined in the calendar,
+            # use it; otherwise, attempt to load the rules from pytz.
+            start_tz = None
+            end_tz = None
+
+            # Ignore all-day apointments, they aren't really in a timezone.
+            if not e.all_day:
+                if e.start.tzinfo != UTC:
+                    if str(e.start.tzinfo) in timezones:
+                        start_tz = timezones[str(e.start.tzinfo)]
+                    else:
+                        try:
+                            start_tz = timezone(str(e.start.tzinfo))
+                        except:
+                            pass
+
+                if e.end.tzinfo != UTC:
+                    if str(e.end.tzinfo) in timezones:
+                        end_tz = timezones[str(e.end.tzinfo)]
+                    else:
+                        try:
+                            end_tz = timezone(str(e.end.tzinfo))
+                        except:
+                            pass
+
+            duration = e.end - e.start
             if e.recurring:
                 # Unfold recurring events according to their rrule
                 rule = parse_rrule(component, cal_tz)
                 dur = e.end - e.start
-                found.extend(e.copy_to(dt) for dt in rule.between(start - dur, end, inc=True))
+                for dt in rule.between(start - dur, end, inc=True):
+                    if start_tz is None:
+                        # Shrug. If we coudln't work out the timezone, it is what it is.
+                        ecopy = e.copy_to(dt)
+                    else:
+                        # Recompute the start time in the current timezone *on* the
+                        # date of *this* occurrence. This handles the case where the
+                        # recurrence has crossed over the daylight savings time boundary.
+                        naive = datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+                        dtstart = start_tz.localize(naive)
+
+                        ecopy = e.copy_to(dtstart)
+
+                        # We're effectively looping over the start time, we might need
+                        # to adjust the end time too, but don't have it's recurred value.
+                        # Make sure it's adjusted by constructing it from the meeting
+                        # duration. Pro: it'll be right. Con: if it was in a different
+                        # timezone from the start time, we'll have lost that.
+                        ecopy.end = dtstart + duration
+
+                    exdate = "%04d%02d%02d" % (ecopy.start.year, ecopy.start.month, ecopy.start.day)
+                    if exdate not in exceptions:
+                        found.append(ecopy)
             elif e.end >= start and e.start <= end:
-                found.append(e)
+                exdate = "%04d%02d%02d" % (e.start.year, e.start.month, e.start.day)
+                if exdate not in exceptions:
+                    found.append(e)
     return found
 
 
