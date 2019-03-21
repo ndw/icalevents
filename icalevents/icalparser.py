@@ -38,6 +38,8 @@ class Event:
         self.all_day = True
         self.recurring = False
         self.location = None
+        self.attendee = None
+        self.organizer = None
 
     def time_left(self, time=None):
         """
@@ -114,6 +116,8 @@ class Event:
         ne.all_day = self.all_day
         ne.recurring = self.recurring
         ne.location = self.location
+        ne.attendee = self.attendee
+        ne.organizer = self.organizer
         ne.uid = uid
 
         return ne
@@ -155,6 +159,7 @@ def create_event(component, tz=UTC):
     except UnicodeEncodeError as e:
         event.location = str(component.get('location').encode('utf-8'))
 
+    event.attendee = str(None)
     if component.get('attendee'):
         event.attendee = component.get('attendee')
         if type(event.attendee) is list:
@@ -168,6 +173,7 @@ def create_event(component, tz=UTC):
     if component.get('uid'):
         event.uid = component.get('uid').encode('utf-8').decode('ascii')
 
+    event.organizer = str(None)
     if component.get('organizer'):
         event.organizer = component.get('organizer').encode('utf-8').decode('ascii')
 
