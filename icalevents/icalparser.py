@@ -296,7 +296,7 @@ def parse_events(content, start=None, end=None, default_span=timedelta(days=7)):
                 for dt in rule.between(start - dur, end, inc=True):
                     if start_tz is None:
                         # Shrug. If we coudln't work out the timezone, it is what it is.
-                        ecopy = e.copy_to(dt)
+                        ecopy = e.copy_to(dt, e.uid)
                     else:
                         # Recompute the start time in the current timezone *on* the
                         # date of *this* occurrence. This handles the case where the
@@ -304,7 +304,7 @@ def parse_events(content, start=None, end=None, default_span=timedelta(days=7)):
                         naive = datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
                         dtstart = start_tz.localize(naive)
 
-                        ecopy = e.copy_to(dtstart)
+                        ecopy = e.copy_to(dtstart, e.uid)
 
                         # We're effectively looping over the start time, we might need
                         # to adjust the end time too, but don't have it's recurred value.
